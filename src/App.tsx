@@ -1,0 +1,82 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crosshair, Heart, MapPin, Moon, Navigation, Search, Sparkles, Sun, Trees, X } from 'lucide-react'
+
+declare global { interface Window { Telegram?: { WebApp?: { ready: () => void; expand: () => void; HapticFeedback?: { impactOccurred: (style: string) => void } } } } }
+
+type Place = { id: number; name: string; kind: string; time: string; x: number; y: number; icon: string; description: string }
+
+const places: Place[] = [
+  { id: 1, name: 'Японский сад', kind: 'Сад · тихая прогулка', time: '12 мин', x: 58, y: 28, icon: '⛩️', description: 'Камни, вода и сезонные растения. Лучше всего утром.' },
+  { id: 2, name: 'Зеркальный лабиринт', kind: 'Архитектура', time: '6 мин', x: 36, y: 50, icon: '◈', description: 'Один из самых фотогеничных объектов парка.' },
+  { id: 3, name: 'Амфитеатр', kind: 'События · искусство', time: '9 мин', x: 73, y: 59, icon: '◒', description: 'Открытая площадка с концертами и показами.' },
+  { id: 4, name: 'Кафе «Краснодар»', kind: 'Ресторан · европейская', time: '4 мин', x: 46, y: 73, icon: '☕', description: 'Завтраки, десерты и терраса с видом на парк.' },
+]
+
+const routes = [
+  ['Первое посещение', 'Главное за 1,5 часа', '✦'],
+  ['Для свидания', 'Красивый свет и тихие места', '♡'],
+  ['Фотолокации', '8 точек для кадра', '◌'],
+  ['На час', 'Быстрый маршрут', '↗'],
+]
+
+export default function App() {
+  const [ready, setReady] = useState(false)
+  const [tab, setTab] = useState<'guide' | 'map' | 'saved'>('guide')
+  const [selected, setSelected] = useState<Place | null>(null)
+  const [saved, setSaved] = useState<number[]>([])
+  const [query, setQuery] = useState('')
+  const [locating, setLocating] = useState(false)
+  const [location, setLocation] = useState(false)
+  const [dark, setDark] = useState(false)
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--tg-bg', '#f5f5f1')
+    window.Telegram?.WebApp?.ready()
+    window.Telegram?.WebApp?.expand()
+    const timer = window.setTimeout(() => setReady(true), 1250)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  const filtered = useMemo(() => places.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.kind.toLowerCase().includes(query.toLowerCase())), [query])
+  const toggleSaved = (id: number) => setSaved(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
+  const requestLocation = () => {
+    setLocating(true)
+    navigator.geolocation?.getCurrentPosition(() => { setLocation(true); setLocating(false) }, () => { setLocation(true); setLocating(false) }, { timeout: 5000 })
+    window.setTimeout(() => { setLocation(true); setLocating(false) }, 1800)
+  }
+  const navigate = (p: Place) => window.open(`https://yandex.ru/maps/?rtext=~45.0459,38.9662&rtt=mt`, '_blank')
+
+  useEffect(() => document.body.classList.toggle('dark', dark), [dark])
+
+  if (!ready) return <div className="splash"><div className="splash-orbit"><Trees size={32}/></div><p>Гид по парку</p><span>КРАСНОДАР</span></div>
+
+  return <main className="app-shell">
+    <header><div><p className="eyebrow">ДОБРЫЙ ДЕНЬ</p><h1>Парк <em>Краснодар</em></h1></div><button className="icon-button"><Bell size={19}/><i /></button></header>
+
+    {!location && <section className="location-prompt glass"><div className="location-icon"><Crosshair size={20}/></div><div><b>С чего начнём прогулку?</b><p>Подберём маршрут по вашему старту</p></div><button onClick={requestLocation}>{locating ? 'Ищем…' : 'Геолокация'}</button></section>}
+
+    {tab === 'guide' && <>
+      <section className="hero">
+        <div className="hero-glow"/><p className="eyebrow">ПЕРСОНАЛЬНЫЙ ГИД</p><h2>Сегодня — ваш<br/><em>идеальный маршрут.</em></h2><p className="hero-text">Выберите старт, а мы покажем парк в вашем ритме.</p>
+        <div className="starts"><button onClick={requestLocation}><Crosshair/>Я здесь</button><button><Car/>На машине</button><button><MapPin/>От Панорамы</button><button><Navigation/>От парковки</button></div>
+      </section>
+      <section className="section-heading"><div><p className="eyebrow">ПРОВЕРЕННЫЕ СЦЕНАРИИ</p><h3>Куда отправимся?</h3></div><button className="text-button" onClick={() => setTab('map')}>Все <ChevronRight size={15}/></button></section>
+      <section className="route-scroll">{routes.map(([title, sub, symbol], i) => <button className={`route-card r${i}`} key={title} onClick={() => setTab('map')}><span>{symbol}</span><b>{title}</b><small>{sub}</small><ChevronRight size={18}/></button>)}</section>
+      <section className="section-heading nearby-head"><div><p className="eyebrow">РЯДОМ С ВАМИ</p><h3>Стоит заглянуть</h3></div><button className="round-arrow" onClick={() => setTab('map')}><ChevronRight size={20}/></button></section>
+      <section className="place-list">{places.slice(0, 2).map(p => <PlaceRow key={p.id} p={p} saved={saved.includes(p.id)} onSave={() => toggleSaved(p.id)} onOpen={() => { setSelected(p); setTab('map') }}/>)}</section>
+    </>}
+
+    {tab === 'map' && <>
+      <div className="map-top"><div className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Найти место или маршрут"/><button onClick={() => setQuery('')}><X size={16}/></button></div><button className="filter"><CircleHelp size={20}/></button></div>
+      <section className="map"><div className="river"/><div className="walk w1"/><div className="walk w2"/><div className="walk w3"/><div className="user-dot">{location ? '●' : ''}</div>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></section>
+      <div className="map-tools"><button onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
+      <section className="map-sheet glass">{selected ? <><div className="sheet-handle"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={() => toggleSaved(selected.id)} className="save"><Heart size={20} fill={saved.includes(selected.id) ? 'currentColor' : 'none'}/></button></div><p className="place-description">{selected.description}</p><button className="navigate" onClick={() => navigate(selected)}><Navigation size={18}/> Дойти сюда <span>· {selected.time}</span></button></> : <><div className="sheet-handle"/><p className="eyebrow">ИНТЕРАКТИВНАЯ КАРТА</p><h3>Выберите точку на карте</h3><p className="place-description">Мы подскажем, что рядом и как удобнее пройти.</p></>}</section>
+    </>}
+
+    {tab === 'saved' && <><section className="saved-hero"><Bookmark size={25}/><p className="eyebrow">ВАША КОЛЛЕКЦИЯ</p><h2>Сохранённые <em>места</em></h2></section><section className="place-list">{saved.length ? places.filter(p => saved.includes(p.id)).map(p => <PlaceRow key={p.id} p={p} saved onSave={() => toggleSaved(p.id)} onOpen={() => {setSelected(p); setTab('map')}}/>) : <div className="empty"><Heart size={27}/><b>Здесь появятся ваши места</b><p>Сохраняйте точки, чтобы вернуться к ним в следующий раз.</p></div>}</section></>}
+
+    <nav><button className={tab === 'guide' ? 'selected' : ''} onClick={() => setTab('guide')}><Sparkles/><span>Для вас</span></button><button className={tab === 'map' ? 'selected' : ''} onClick={() => setTab('map')}><Compass/><span>Карта</span></button><button className={tab === 'saved' ? 'selected' : ''} onClick={() => setTab('saved')}><Bookmark/><span>Избранное</span></button></nav>
+  </main>
+}
+
+function PlaceRow({ p, saved, onSave, onOpen }: {p: Place; saved: boolean; onSave: () => void; onOpen: () => void}) { return <article className="place-row"><button className="place-photo" onClick={onOpen}>{p.icon}</button><button className="place-data" onClick={onOpen}><p className="eyebrow">{p.kind}</p><h4>{p.name}</h4><small><Clock3 size={13}/> {p.time} пешком</small></button><button className={`heart ${saved ? 'filled' : ''}`} onClick={onSave}><Heart size={19} fill={saved ? 'currentColor' : 'none'}/></button></article> }
