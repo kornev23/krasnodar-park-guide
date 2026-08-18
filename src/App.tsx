@@ -46,8 +46,9 @@ export default function App() {
   }
   const navigate = (p: Place) => window.open(`https://yandex.ru/maps/?rtext=~45.0459,38.9662&rtt=mt`, '_blank')
 
-  useEffect(() => document.body.classList.toggle('dark', dark), [dark])
-
+useEffect(() => {
+  document.body.classList.toggle('dark', dark)
+}, [dark])
   if (!ready) return <div className="splash"><div className="splash-orbit"><Trees size={32}/></div><p>Гид по парку</p><span>КРАСНОДАР</span></div>
 
   return <main className="app-shell">
