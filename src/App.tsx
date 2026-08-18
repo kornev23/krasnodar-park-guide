@@ -46,9 +46,10 @@ export default function App() {
   }
   const navigate = (p: Place) => window.open(`https://yandex.ru/maps/?rtext=~45.0459,38.9662&rtt=mt`, '_blank')
 
-useEffect(() => {
-  document.body.classList.toggle('dark', dark)
-}, [dark])
+  useEffect(() => {
+    document.body.classList.toggle('dark', dark)
+  }, [dark])
+
   if (!ready) return <div className="splash"><div className="splash-orbit"><Trees size={32}/></div><p>Гид по парку</p><span>КРАСНОДАР</span></div>
 
   return <main className="app-shell">
@@ -69,7 +70,7 @@ useEffect(() => {
 
     {tab === 'map' && <>
       <div className="map-top"><div className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Найти место или маршрут"/><button onClick={() => setQuery('')}><X size={16}/></button></div><button className="filter"><CircleHelp size={20}/></button></div>
-      <section className="map"><div className="river"/><div className="walk w1"/><div className="walk w2"/><div className="walk w3"/><div className="user-dot">{location ? '●' : ''}</div>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></section>
+      <section className="map map-illustrated"><img className="map-image" src="/park-map.png" alt="Схема парка Краснодар"/><div className="user-dot">{location ? '●' : ''}</div>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></section>
       <div className="map-tools"><button onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
       <section className="map-sheet glass">{selected ? <><div className="sheet-handle"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={() => toggleSaved(selected.id)} className="save"><Heart size={20} fill={saved.includes(selected.id) ? 'currentColor' : 'none'}/></button></div><p className="place-description">{selected.description}</p><button className="navigate" onClick={() => navigate(selected)}><Navigation size={18}/> Дойти сюда <span>· {selected.time}</span></button></> : <><div className="sheet-handle"/><p className="eyebrow">ИНТЕРАКТИВНАЯ КАРТА</p><h3>Выберите точку на карте</h3><p className="place-description">Мы подскажем, что рядом и как удобнее пройти.</p></>}</section>
     </>}
