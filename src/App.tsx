@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crosshair, Heart, MapPin, Moon, Navigation, Search, Sparkles, Sun, Trees, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crosshair, Heart, MapPin, Minus, Moon, Navigation, Plus, Search, Sparkles, Sun, Trees, X } from 'lucide-react'
 
 declare global { interface Window { Telegram?: { WebApp?: { ready: () => void; expand: () => void; HapticFeedback?: { impactOccurred: (style: string) => void } } } } }
 
@@ -27,7 +27,11 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [locating, setLocating] = useState(false)
   const [location, setLocation] = useState(false)
+  const [locationError, setLocationError] = useState(false)
   const [dark, setDark] = useState(false)
+  const [mapView, setMapView] = useState({ scale: 1, x: 0, y: 0 })
+  const mapRef = useRef<HTMLElement>(null)
+  const gestureRef = useRef<{ x: number; y: number; viewX: number; viewY: number } | null>(null)
 
   useEffect(() => {
     document.documentElement.style.setProperty('--tg-bg', '#f5f5f1')
@@ -41,8 +45,33 @@ export default function App() {
   const toggleSaved = (id: number) => setSaved(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
   const requestLocation = () => {
     setLocating(true)
-    navigator.geolocation?.getCurrentPosition(() => { setLocation(true); setLocating(false) }, () => { setLocation(true); setLocating(false) }, { timeout: 5000 })
-    window.setTimeout(() => { setLocation(true); setLocating(false) }, 1800)
+    setLocationError(false)
+    if (!navigator.geolocation) { setLocationError(true); setLocating(false); return }
+    navigator.geolocation.getCurrentPosition(
+      () => { setLocation(true); setLocating(false) },
+      () => { setLocationError(true); setLocating(false) },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    )
+  }
+  const changeScale = (delta: number) => setMapView(view => ({ ...view, scale: Math.min(3, Math.max(1, Number((view.scale + delta).toFixed(2)))) }))
+  const resetMap = () => setMapView({ scale: 1, x: 0, y: 0 })
+  const clampPosition = (x: number, y: number, scale: number) => {
+    const rect = mapRef.current?.getBoundingClientRect()
+    if (!rect) return { x, y }
+    const maxX = ((scale - 1) * rect.width) / 2
+    const maxY = ((scale - 1) * rect.height) / 2
+    return { x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(-maxY, Math.min(maxY, y)) }
+  }
+  const startMapDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest('button')) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    gestureRef.current = { x: event.clientX, y: event.clientY, viewX: mapView.x, viewY: mapView.y }
+  }
+  const dragMap = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!gestureRef.current || mapView.scale === 1) return
+    const start = gestureRef.current
+    const position = clampPosition(start.viewX + event.clientX - start.x, start.viewY + event.clientY - start.y, mapView.scale)
+    setMapView(view => ({ ...view, ...position }))
   }
   const navigate = (p: Place) => window.open(`https://yandex.ru/maps/?rtext=~45.0459,38.9662&rtt=mt`, '_blank')
 
@@ -55,7 +84,7 @@ export default function App() {
   return <main className="app-shell">
     <header><div><p className="eyebrow">ДОБРЫЙ ДЕНЬ</p><h1>Парк <em>Краснодар</em></h1></div><button className="icon-button"><Bell size={19}/><i /></button></header>
 
-    {!location && <section className="location-prompt glass"><div className="location-icon"><Crosshair size={20}/></div><div><b>С чего начнём прогулку?</b><p>Подберём маршрут по вашему старту</p></div><button onClick={requestLocation}>{locating ? 'Ищем…' : 'Геолокация'}</button></section>}
+    {!location && <section className="location-prompt glass"><div className="location-icon"><Crosshair size={20}/></div><div><b>С чего начнём прогулку?</b><p>{locationError ? 'Не удалось определить место — проверьте доступ' : 'Подберём маршрут по вашему старту'}</p></div><button onClick={requestLocation}>{locating ? 'Ищем…' : 'Геолокация'}</button></section>}
 
     {tab === 'guide' && <>
       <section className="hero">
@@ -70,8 +99,8 @@ export default function App() {
 
     {tab === 'map' && <>
       <div className="map-top"><div className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Найти место или маршрут"/><button onClick={() => setQuery('')}><X size={16}/></button></div><button className="filter"><CircleHelp size={20}/></button></div>
-      <section className="map map-illustrated"><img className="map-image" src={`${import.meta.env.BASE_URL}park-map.png`} alt="Схема парка Краснодар"/><div className="user-dot">{location ? '●' : ''}</div>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></section>
-      <div className="map-tools"><button onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
+      <section ref={mapRef} className="map map-illustrated" onPointerDown={startMapDrag} onPointerMove={dragMap} onPointerUp={() => { gestureRef.current = null }} onPointerCancel={() => { gestureRef.current = null }} onWheel={event => { event.preventDefault(); changeScale(event.deltaY > 0 ? -0.2 : 0.2) }}><div className="map-canvas" style={{ transform: `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.scale})` }}><img className="map-image" src={`${import.meta.env.BASE_URL}park-map.png`} alt="Схема парка Краснодар"/>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></div></section>
+      <div className="map-tools"><button title="Приблизить" onClick={() => changeScale(0.25)}><Plus size={19}/></button><button title="Отдалить" onClick={() => changeScale(-0.25)}><Minus size={19}/></button><button title="Сбросить карту" onClick={resetMap}><Compass size={19}/></button><button title="Моё местоположение" onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
       <section className="map-sheet glass">{selected ? <><div className="sheet-handle"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={() => toggleSaved(selected.id)} className="save"><Heart size={20} fill={saved.includes(selected.id) ? 'currentColor' : 'none'}/></button></div><p className="place-description">{selected.description}</p><button className="navigate" onClick={() => navigate(selected)}><Navigation size={18}/> Дойти сюда <span>· {selected.time}</span></button></> : <><div className="sheet-handle"/><p className="eyebrow">ИНТЕРАКТИВНАЯ КАРТА</p><h3>Выберите точку на карте</h3><p className="place-description">Мы подскажем, что рядом и как удобнее пройти.</p></>}</section>
     </>}
 
