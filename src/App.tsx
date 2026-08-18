@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crosshair, Heart, MapPin, Minus, Moon, Navigation, Plus, Search, Sparkles, Sun, Trees, X } from 'lucide-react'
+import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crosshair, Heart, Layers, MapPin, Minus, Moon, Navigation, Plus, Search, Sparkles, Sun, Trees, X } from 'lucide-react'
 
-declare global { interface Window { Telegram?: { WebApp?: { ready: () => void; expand: () => void; HapticFeedback?: { impactOccurred: (style: string) => void } } } } }
+declare global { interface Window { Telegram?: { WebApp?: { ready: () => void; expand: () => void; HapticFeedback?: { impactOccurred: (style: string) => void } } }; ymaps3?: any } }
 
 type Place = { id: number; name: string; kind: string; time: string; x: number; y: number; icon: string; description: string }
+type Coordinates = [number, number]
 
 const places: Place[] = [
   { id: 1, name: 'Японский сад', kind: 'Сад · тихая прогулка', time: '12 мин', x: 58, y: 28, icon: '⛩️', description: 'Камни, вода и сезонные растения. Лучше всего утром.' },
@@ -28,7 +29,9 @@ export default function App() {
   const [locating, setLocating] = useState(false)
   const [location, setLocation] = useState(false)
   const [locationError, setLocationError] = useState(false)
+  const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null)
   const [dark, setDark] = useState(false)
+  const [mapMode, setMapMode] = useState<'guide' | 'details'>('guide')
   const [mapView, setMapView] = useState({ scale: 1, x: 0, y: 0 })
   const mapRef = useRef<HTMLElement>(null)
   const gestureRef = useRef<{ x: number; y: number; viewX: number; viewY: number } | null>(null)
@@ -48,7 +51,7 @@ export default function App() {
     setLocationError(false)
     if (!navigator.geolocation) { setLocationError(true); setLocating(false); return }
     navigator.geolocation.getCurrentPosition(
-      () => { setLocation(true); setLocating(false) },
+      position => { setUserCoordinates([position.coords.longitude, position.coords.latitude]); setLocation(true); setLocating(false) },
       () => { setLocationError(true); setLocating(false) },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
     )
@@ -99,8 +102,9 @@ export default function App() {
 
     {tab === 'map' && <>
       <div className="map-top"><div className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Найти место или маршрут"/><button onClick={() => setQuery('')}><X size={16}/></button></div><button className="filter"><CircleHelp size={20}/></button></div>
-      <section ref={mapRef} className="map map-illustrated" onPointerDown={startMapDrag} onPointerMove={dragMap} onPointerUp={() => { gestureRef.current = null }} onPointerCancel={() => { gestureRef.current = null }} onWheel={event => { event.preventDefault(); changeScale(event.deltaY > 0 ? -0.2 : 0.2) }}><div className="map-canvas" style={{ transform: `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.scale})` }}><img className="map-image" src={`${import.meta.env.BASE_URL}park-map.png`} alt="Схема парка Краснодар"/>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></div></section>
-      <div className="map-tools"><button title="Приблизить" onClick={() => changeScale(0.25)}><Plus size={19}/></button><button title="Отдалить" onClick={() => changeScale(-0.25)}><Minus size={19}/></button><button title="Сбросить карту" onClick={resetMap}><Compass size={19}/></button><button title="Моё местоположение" onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
+      <div className="map-mode-switch" aria-label="Режим карты"><button className={mapMode === 'guide' ? 'active' : ''} onClick={() => setMapMode('guide')}>Карта гида</button><button className={mapMode === 'details' ? 'active' : ''} onClick={() => setMapMode('details')}><Layers size={14}/> Яндекс Карты</button></div>
+      {mapMode === 'guide' ? <section ref={mapRef} className="map map-illustrated" onPointerDown={startMapDrag} onPointerMove={dragMap} onPointerUp={() => { gestureRef.current = null }} onPointerCancel={() => { gestureRef.current = null }} onWheel={event => { event.preventDefault(); changeScale(event.deltaY > 0 ? -0.2 : 0.2) }}><div className="map-canvas" style={{ transform: `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.scale})` }}><img className="map-image" src={`${import.meta.env.BASE_URL}park-map.png`} alt="Схема парка Краснодар"/>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></div></section> : <YandexDetailMap userCoordinates={userCoordinates}/>} 
+      <div className="map-tools">{mapMode === 'guide' && <><button title="Приблизить" onClick={() => changeScale(0.25)}><Plus size={19}/></button><button title="Отдалить" onClick={() => changeScale(-0.25)}><Minus size={19}/></button><button title="Сбросить карту" onClick={resetMap}><Compass size={19}/></button></>}<button title="Моё местоположение" onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
       <section className="map-sheet glass">{selected ? <><div className="sheet-handle"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={() => toggleSaved(selected.id)} className="save"><Heart size={20} fill={saved.includes(selected.id) ? 'currentColor' : 'none'}/></button></div><p className="place-description">{selected.description}</p><button className="navigate" onClick={() => navigate(selected)}><Navigation size={18}/> Дойти сюда <span>· {selected.time}</span></button></> : <><div className="sheet-handle"/><p className="eyebrow">ИНТЕРАКТИВНАЯ КАРТА</p><h3>Выберите точку на карте</h3><p className="place-description">Мы подскажем, что рядом и как удобнее пройти.</p></>}</section>
     </>}
 
@@ -111,3 +115,46 @@ export default function App() {
 }
 
 function PlaceRow({ p, saved, onSave, onOpen }: {p: Place; saved: boolean; onSave: () => void; onOpen: () => void}) { return <article className="place-row"><button className="place-photo" onClick={onOpen}>{p.icon}</button><button className="place-data" onClick={onOpen}><p className="eyebrow">{p.kind}</p><h4>{p.name}</h4><small><Clock3 size={13}/> {p.time} пешком</small></button><button className={`heart ${saved ? 'filled' : ''}`} onClick={onSave}><Heart size={19} fill={saved ? 'currentColor' : 'none'}/></button></article> }
+
+function YandexDetailMap({ userCoordinates }: { userCoordinates: Coordinates | null }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    const apiKey = import.meta.env.VITE_YANDEX_MAPS_API_KEY
+    if (!apiKey || !containerRef.current) { setError(true); return }
+    let disposed = false
+    let map: any
+    const loadMap = async () => {
+      try {
+        if (!window.ymaps3) {
+          await new Promise<void>((resolve, reject) => {
+            const current = document.getElementById('yandex-maps-api') as HTMLScriptElement | null
+            if (current) { current.addEventListener('load', () => resolve(), { once: true }); current.addEventListener('error', reject, { once: true }); return }
+            const script = document.createElement('script')
+            script.id = 'yandex-maps-api'
+            script.src = `https://api-maps.yandex.ru/v3/?apikey=${apiKey}&lang=ru_RU`
+            script.onload = () => resolve()
+            script.onerror = reject
+            document.head.appendChild(script)
+          })
+        }
+        await window.ymaps3.ready
+        if (disposed || !containerRef.current) return
+        const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker } = window.ymaps3
+        map = new YMap(containerRef.current, { location: { center: userCoordinates ?? [38.9662, 45.0459], zoom: userCoordinates ? 17 : 15.4 } })
+        map.addChild(new YMapDefaultSchemeLayer())
+        map.addChild(new YMapDefaultFeaturesLayer({ zIndex: 1800 }))
+        if (userCoordinates) {
+          const dot = document.createElement('div')
+          dot.className = 'yandex-user-dot'
+          map.addChild(new YMapMarker({ coordinates: userCoordinates }, dot))
+        }
+      } catch { setError(true) }
+    }
+    void loadMap()
+    return () => { disposed = true; map?.destroy?.() }
+  }, [userCoordinates])
+
+  return <section className="map yandex-map">{error ? <div className="map-notice"><b>Подробная карта пока недоступна</b><p>Проверьте ключ Яндекс Карт и ограничение домена.</p></div> : <div ref={containerRef} className="yandex-map-host"/>}</section>
+}
