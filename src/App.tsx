@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crosshair, Heart, Layers, MapPin, Minus, Moon, Navigation, Plus, Search, Sparkles, Sun, Trees, X } from 'lucide-react'
+import { yandexMapStyle } from './yandexMapStyle'
 
 declare global { interface Window { Telegram?: { WebApp?: { ready: () => void; expand: () => void; HapticFeedback?: { impactOccurred: (style: string) => void } } }; ymaps3?: any } }
 
@@ -31,7 +32,7 @@ export default function App() {
   const [locationError, setLocationError] = useState(false)
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null)
   const [dark, setDark] = useState(false)
-  const [mapMode, setMapMode] = useState<'guide' | 'details'>('guide')
+  const [mapMode, setMapMode] = useState<'guide' | 'details'>('details')
   const [mapView, setMapView] = useState({ scale: 1, x: 0, y: 0 })
   const mapRef = useRef<HTMLElement>(null)
   const gestureRef = useRef<{ x: number; y: number; viewX: number; viewY: number } | null>(null)
@@ -142,8 +143,8 @@ function YandexDetailMap({ userCoordinates }: { userCoordinates: Coordinates | n
         await window.ymaps3.ready
         if (disposed || !containerRef.current) return
         const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker } = window.ymaps3
-        map = new YMap(containerRef.current, { location: { center: userCoordinates ?? [38.9662, 45.0459], zoom: userCoordinates ? 17 : 15.4 } })
-        map.addChild(new YMapDefaultSchemeLayer())
+        map = new YMap(containerRef.current, { location: { center: userCoordinates ?? [38.9662, 45.0459], zoom: userCoordinates ? 17 : 15.4 }, type: 'map', zoomRounding: 'smooth' })
+        map.addChild(new YMapDefaultSchemeLayer({ customization: yandexMapStyle }))
         map.addChild(new YMapDefaultFeaturesLayer({ zIndex: 1800 }))
         if (userCoordinates) {
           const dot = document.createElement('div')
