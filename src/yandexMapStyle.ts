@@ -1,6 +1,16 @@
 // Базовый спокойный стиль. Его можно заменить настройками из редактора стилей Яндекс Карт.
 export const yandexMapStyle = [
   {
+    tags: { any: ['transit_line'] },
+    elements: 'geometry',
+    stylers: [{ visibility: 'off' }],
+  },
+  {
+    tags: { any: ['transit_line'] },
+    elements: 'label',
+    stylers: [{ visibility: 'off' }],
+  },
+  {
     tags: { any: ['poi'] },
     elements: 'label',
     stylers: [{ visibility: 'off' }],
