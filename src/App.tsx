@@ -3,6 +3,7 @@ import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crossha
 import { yandexMapStyle } from './yandexMapStyle'
 import type { CategoryId } from './categories'
 import { supabase } from './lib/supabase'
+import AdminAccess from './AdminAccess'
 
 declare global { interface Window { Telegram?: { WebApp?: { ready: () => void; expand: () => void; HapticFeedback?: { impactOccurred: (style: string) => void } } }; ymaps3?: any } }
 
@@ -37,6 +38,7 @@ export default function App() {
   const [dark, setDark] = useState(false)
   const [mapMode, setMapMode] = useState<'guide' | 'details'>('details')
   const [mapView, setMapView] = useState({ scale: 1, x: 0, y: 0 })
+  const [hash, setHash] = useState(window.location.hash)
   const mapRef = useRef<HTMLElement>(null)
   const gestureRef = useRef<{ x: number; y: number; viewX: number; viewY: number } | null>(null)
 
@@ -46,6 +48,12 @@ export default function App() {
     window.Telegram?.WebApp?.expand()
     const timer = window.setTimeout(() => setReady(true), 1250)
     return () => window.clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    const onHashChange = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
   useEffect(() => {
@@ -111,6 +119,7 @@ export default function App() {
     document.body.classList.toggle('dark', dark)
   }, [dark])
 
+  if (hash === '#admin' || hash.includes('type=invite') || hash.includes('type=recovery')) return <AdminAccess />
   if (!ready) return <div className="splash"><div className="splash-orbit"><Trees size={32}/></div><p>Гид по парку</p><span>КРАСНОДАР</span></div>
 
   return <main className="app-shell">
