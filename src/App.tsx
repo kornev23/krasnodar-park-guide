@@ -74,7 +74,7 @@ export default function App() {
   }, [])
 
   const filtered = useMemo(() => places.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.kind.toLowerCase().includes(query.toLowerCase())), [query])
-  const toggleSaved = (id: number) => setSaved(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
+  const toggleSaved = (id: string) => setSaved(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
   const requestLocation = () => {
     setLocating(true)
     setLocationError(false)
