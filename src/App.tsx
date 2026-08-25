@@ -9,6 +9,7 @@ declare global { interface Window { Telegram?: { WebApp?: { ready: () => void; e
 
 type Place = { id: string; name: string; kind: string; category: CategoryId; time: string; x: number; y: number; icon: string; description: string; coordinates?: Coordinates; images?: string[] }
 type Coordinates = [number, number]
+type RouteInfo = { coordinates: Coordinates[]; distance: number; duration: number }
 
 const demoPlaces: Place[] = [
   { id: 'japanese-garden', name: 'Японский сад', kind: 'Сад · тихая прогулка', category: 'nature', time: '12 мин', x: 58, y: 28, icon: '⛩️', description: 'Камни, вода и сезонные растения. Лучше всего утром.' },
@@ -35,6 +36,9 @@ export default function App() {
   const [location, setLocation] = useState(false)
   const [locationError, setLocationError] = useState(false)
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null)
+  const [route, setRoute] = useState<RouteInfo | null>(null)
+  const [routing, setRouting] = useState(false)
+  const [routeMessage, setRouteMessage] = useState('')
   const [dark, setDark] = useState(false)
   const [mapView, setMapView] = useState({ scale: 1, x: 0, y: 0 })
   const [hash, setHash] = useState(window.location.hash)
@@ -114,9 +118,14 @@ export default function App() {
     const position = clampPosition(start.viewX + event.clientX - start.x, start.viewY + event.clientY - start.y, mapView.scale)
     setMapView(view => ({ ...view, ...position }))
   }
-  const navigate = (p: Place) => {
-    const [longitude, latitude] = p.coordinates ?? [38.9662, 45.0459]
-    window.open(`https://yandex.ru/maps/?rtext=~${latitude},${longitude}&rtt=mt`, '_blank')
+  const selectPlace = (place: Place) => { setRoute(null); setRouteMessage(''); setSelected(place) }
+  const navigate = async (p: Place) => {
+    if (!userCoordinates) { setRouteMessage('Разрешите геолокацию кнопкой на карте — тогда построим путь от вас.'); return }
+    if (!p.coordinates || !supabase) { setRouteMessage('Маршрут пока недоступен.'); return }
+    setRouting(true); setRouteMessage('Строим пеший маршрут…')
+    const { data, error } = await supabase.functions.invoke('park-route', { body: { from: userCoordinates, to: p.coordinates } })
+    if (error || !data?.coordinates) { setRouteMessage(data?.error ?? 'Маршрут не удалось построить. Попробуйте ещё раз.'); setRouting(false); return }
+    setRoute(data as RouteInfo); setRouteMessage('Маршрут готов — он показан синей линией на карте.'); setRouting(false)
   }
 
   useEffect(() => {
@@ -144,9 +153,9 @@ export default function App() {
 
     {tab === 'map' && <>
       <div className="map-top"><div className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Найти место или маршрут"/><button onClick={() => setQuery('')}><X size={16}/></button></div><button className="filter"><CircleHelp size={20}/></button></div>
-      <YandexDetailMap userCoordinates={userCoordinates} places={places} onPlaceSelect={setSelected}/>
+      <YandexDetailMap userCoordinates={userCoordinates} places={places} route={route} onPlaceSelect={selectPlace}/>
       <div className="map-tools"><button title="Моё местоположение" onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
-      <MapSheet selected={selected} saved={selected ? saved.includes(selected.id) : false} onClose={() => setSelected(null)} onSave={() => selected && toggleSaved(selected.id)} onNavigate={() => selected && navigate(selected)} />
+      <MapSheet selected={selected} saved={selected ? saved.includes(selected.id) : false} route={route} routing={routing} routeMessage={routeMessage} onClose={() => { setSelected(null); setRoute(null); setRouteMessage('') }} onSave={() => selected && toggleSaved(selected.id)} onNavigate={() => selected && navigate(selected)} />
     </>}
 
     {tab === 'saved' && <><section className="saved-hero"><Bookmark size={25}/><p className="eyebrow">ВАША КОЛЛЕКЦИЯ</p><h2>Сохранённые <em>места</em></h2></section><section className="place-list">{saved.length ? places.filter(p => saved.includes(p.id)).map(p => <PlaceRow key={p.id} p={p} saved onSave={() => toggleSaved(p.id)} onOpen={() => {setSelected(p); setTab('map')}}/>) : <div className="empty"><Heart size={27}/><b>Здесь появятся ваши места</b><p>Сохраняйте точки, чтобы вернуться к ним в следующий раз.</p></div>}</section></>}
@@ -157,7 +166,7 @@ export default function App() {
 
 function PlaceRow({ p, saved, onSave, onOpen }: {p: Place; saved: boolean; onSave: () => void; onOpen: () => void}) { return <article className="place-row"><button className="place-photo" onClick={onOpen}>{p.icon}</button><button className="place-data" onClick={onOpen}><p className="eyebrow">{p.kind}</p><h4>{p.name}</h4><small><Clock3 size={13}/> {p.time} пешком</small></button><button className={`heart ${saved ? 'filled' : ''}`} onClick={onSave}><Heart size={19} fill={saved ? 'currentColor' : 'none'}/></button></article> }
 
-function MapSheet({ selected, saved, onClose, onSave, onNavigate }: { selected: Place | null; saved: boolean; onClose: () => void; onSave: () => void; onNavigate: () => void }) {
+function MapSheet({ selected, saved, route, routing, routeMessage, onClose, onSave, onNavigate }: { selected: Place | null; saved: boolean; route: RouteInfo | null; routing: boolean; routeMessage: string; onClose: () => void; onSave: () => void; onNavigate: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const pointerStart = useRef<{ x: number; y: number } | null>(null)
@@ -165,7 +174,8 @@ function MapSheet({ selected, saved, onClose, onSave, onNavigate }: { selected: 
   if (!selected) return null
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => { pointerStart.current = { x: event.clientX, y: event.clientY } }
   const onPointerUp = (event: ReactPointerEvent<HTMLElement>) => { const start = pointerStart.current; pointerStart.current = null; if (!start) return; const vertical = event.clientY - start.y; const horizontal = Math.abs(event.clientX - start.x); if (horizontal > Math.abs(vertical)) return; if (vertical > 55) onClose(); if (vertical < -40) setExpanded(true) }
-  return <><section className={`map-sheet glass ${expanded ? 'expanded' : ''}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp}><button className="sheet-handle" aria-label="Потяните карточку"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={onSave} className="save"><Heart size={20} fill={saved ? 'currentColor' : 'none'}/></button><button onClick={onClose} className="sheet-close" aria-label="Закрыть"><X size={18}/></button></div>{selected.images?.length ? <div className="place-gallery">{selected.images.map((image, index) => <button key={image} onClick={() => setViewerIndex(index)}><img src={image} alt={`${selected.name}, фото ${index + 1}`}/></button>)}</div> : null}<p className="place-description">{selected.description}</p><button className="navigate" onClick={onNavigate}><Navigation size={18}/> Проложить маршрут</button></section>{viewerIndex !== null && selected.images ? <PhotoViewer images={selected.images} title={selected.name} initialIndex={viewerIndex} onClose={() => setViewerIndex(null)} /> : null}</>
+  const routeSummary = route ? `${Math.round(route.distance)} м · ${Math.max(1, Math.round(route.duration / 60))} мин` : null
+  return <><section className={`map-sheet glass ${expanded ? 'expanded' : ''}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp}><button className="sheet-handle" aria-label="Потяните карточку"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={onSave} className="save"><Heart size={20} fill={saved ? 'currentColor' : 'none'}/></button><button onClick={onClose} className="sheet-close" aria-label="Закрыть"><X size={18}/></button></div>{selected.images?.length ? <div className="place-gallery">{selected.images.map((image, index) => <button key={image} onClick={() => setViewerIndex(index)}><img src={image} alt={`${selected.name}, фото ${index + 1}`}/></button>)}</div> : null}<p className="place-description">{selected.description}</p>{routeMessage && <p className="route-message">{routeMessage}{routeSummary ? ` ${routeSummary}` : ''}</p>}<button className="navigate" onClick={onNavigate} disabled={routing}><Navigation size={18}/>{routing ? 'Строим маршрут…' : route ? 'Перестроить маршрут' : 'Проложить маршрут'}</button><small className="route-attribution">Маршрут: openrouteservice · © OpenStreetMap contributors</small></section>{viewerIndex !== null && selected.images ? <PhotoViewer images={selected.images} title={selected.name} initialIndex={viewerIndex} onClose={() => setViewerIndex(null)} /> : null}</>
 }
 
 function PhotoViewer({ images, title, initialIndex, onClose }: { images: string[]; title: string; initialIndex: number; onClose: () => void }) {
@@ -175,7 +185,7 @@ function PhotoViewer({ images, title, initialIndex, onClose }: { images: string[
   return <div className="photo-viewer" role="dialog" aria-modal="true" onTouchStart={event => { touchStart.current = event.touches[0]?.clientX ?? null }} onTouchEnd={event => { const start = touchStart.current; const end = event.changedTouches[0]?.clientX; touchStart.current = null; if (start === null || end === undefined || Math.abs(end - start) < 45) return; move(end < start ? 1 : -1) }}><button className="viewer-close" onClick={onClose} aria-label="Закрыть"><X size={23}/></button><img src={images[index]} alt={`${title}, фото ${index + 1}`}/>{images.length > 1 && <><button className="viewer-arrow left" onClick={() => move(-1)} aria-label="Предыдущее фото">‹</button><button className="viewer-arrow right" onClick={() => move(1)} aria-label="Следующее фото">›</button><div className="viewer-count">{index + 1} / {images.length}</div></>}</div>
 }
 
-function YandexDetailMap({ userCoordinates, places, onPlaceSelect }: { userCoordinates: Coordinates | null; places: Place[]; onPlaceSelect: (place: Place) => void }) {
+function YandexDetailMap({ userCoordinates, places, route, onPlaceSelect }: { userCoordinates: Coordinates | null; places: Place[]; route: RouteInfo | null; onPlaceSelect: (place: Place) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState(false)
 
@@ -200,10 +210,11 @@ function YandexDetailMap({ userCoordinates, places, onPlaceSelect }: { userCoord
         }
         await window.ymaps3.ready
         if (disposed || !containerRef.current) return
-        const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker } = window.ymaps3
+        const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker, YMapFeature } = window.ymaps3
         map = new YMap(containerRef.current, { location: { center: userCoordinates ?? [38.9662, 45.0459], zoom: userCoordinates ? 17 : 15.4 }, type: 'map', zoomRounding: 'smooth' })
         map.addChild(new YMapDefaultSchemeLayer({ customization: yandexMapStyle }))
         map.addChild(new YMapDefaultFeaturesLayer({ zIndex: 1800 }))
+        if (route?.coordinates?.length) map.addChild(new YMapFeature({ id: 'walking-route', geometry: { type: 'LineString', coordinates: route.coordinates }, style: { stroke: [{ width: 6, color: 'rgba(49, 112, 224, 0.92)' }] } }))
         if (userCoordinates) {
           const dot = document.createElement('div')
           dot.className = 'yandex-user-dot'
@@ -223,7 +234,7 @@ function YandexDetailMap({ userCoordinates, places, onPlaceSelect }: { userCoord
     }
     void loadMap()
     return () => { disposed = true; map?.destroy?.() }
-  }, [userCoordinates, places, onPlaceSelect])
+  }, [userCoordinates, places, route, onPlaceSelect])
 
   return <section className="map yandex-map">{error ? <div className="map-notice"><b>Подробная карта пока недоступна</b><p>Проверьте ключ Яндекс Карт и ограничение домена.</p></div> : <div ref={containerRef} className="yandex-map-host"/>}</section>
 }
