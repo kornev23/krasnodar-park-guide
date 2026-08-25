@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from 'react'
 import { Bell, Bookmark, Car, ChevronRight, CircleHelp, Clock3, Compass, Crosshair, Heart, Layers, MapPin, Minus, Moon, Navigation, Plus, Search, Sparkles, Sun, Trees, X } from 'lucide-react'
 import { yandexMapStyle } from './yandexMapStyle'
 import type { CategoryId } from './categories'
@@ -36,7 +36,6 @@ export default function App() {
   const [locationError, setLocationError] = useState(false)
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null)
   const [dark, setDark] = useState(false)
-  const [mapMode, setMapMode] = useState<'guide' | 'details'>('details')
   const [mapView, setMapView] = useState({ scale: 1, x: 0, y: 0 })
   const [hash, setHash] = useState(window.location.hash)
   const mapRef = useRef<HTMLElement>(null)
@@ -71,7 +70,7 @@ export default function App() {
           name: place.title,
           kind: place.place_categories?.title ?? 'Место в парке',
           category: place.category_id as CategoryId,
-          time: 'Смотрите на карте',
+          time: 'несколько минут',
           x: 50,
           y: 50,
           icon: place.place_categories?.icon ?? '●',
@@ -115,7 +114,10 @@ export default function App() {
     const position = clampPosition(start.viewX + event.clientX - start.x, start.viewY + event.clientY - start.y, mapView.scale)
     setMapView(view => ({ ...view, ...position }))
   }
-  const navigate = (p: Place) => window.open(`https://yandex.ru/maps/?rtext=~45.0459,38.9662&rtt=mt`, '_blank')
+  const navigate = (p: Place) => {
+    const [longitude, latitude] = p.coordinates ?? [38.9662, 45.0459]
+    window.open(`https://yandex.ru/maps/?rtext=~${latitude},${longitude}&rtt=mt`, '_blank')
+  }
 
   useEffect(() => {
     document.body.classList.toggle('dark', dark)
@@ -142,10 +144,9 @@ export default function App() {
 
     {tab === 'map' && <>
       <div className="map-top"><div className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Найти место или маршрут"/><button onClick={() => setQuery('')}><X size={16}/></button></div><button className="filter"><CircleHelp size={20}/></button></div>
-      <div className="map-mode-switch" aria-label="Режим карты"><button className={mapMode === 'guide' ? 'active' : ''} onClick={() => setMapMode('guide')}>Карта гида</button><button className={mapMode === 'details' ? 'active' : ''} onClick={() => setMapMode('details')}><Layers size={14}/> Яндекс Карты</button></div>
-      {mapMode === 'guide' ? <section ref={mapRef} className="map map-illustrated" onPointerDown={startMapDrag} onPointerMove={dragMap} onPointerUp={() => { gestureRef.current = null }} onPointerCancel={() => { gestureRef.current = null }} onWheel={event => { event.preventDefault(); changeScale(event.deltaY > 0 ? -0.2 : 0.2) }}><div className="map-canvas" style={{ transform: `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.scale})` }}><img className="map-image" src={`${import.meta.env.BASE_URL}park-map.png`} alt="Схема парка Краснодар"/>{filtered.map(p => <button key={p.id} className={`pin ${selected?.id === p.id ? 'active' : ''}`} style={{left: `${p.x}%`, top: `${p.y}%`}} onClick={() => setSelected(p)}><span>{p.icon}</span></button>)}<div className="map-label">ПАРК КРАСНОДАР</div></div></section> : <YandexDetailMap userCoordinates={userCoordinates} places={places} onPlaceSelect={setSelected}/>} 
-      <div className="map-tools">{mapMode === 'guide' && <><button title="Приблизить" onClick={() => changeScale(0.25)}><Plus size={19}/></button><button title="Отдалить" onClick={() => changeScale(-0.25)}><Minus size={19}/></button><button title="Сбросить карту" onClick={resetMap}><Compass size={19}/></button></>}<button title="Моё местоположение" onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
-      <section className="map-sheet glass">{selected ? <><div className="sheet-handle"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={() => toggleSaved(selected.id)} className="save"><Heart size={20} fill={saved.includes(selected.id) ? 'currentColor' : 'none'}/></button></div>{selected.images?.length ? <div className="place-gallery">{selected.images.map((image, index) => <img key={image} src={image} alt={`${selected.name}, фото ${index + 1}`}/>)}</div> : null}<p className="place-description">{selected.description}</p><button className="navigate" onClick={() => navigate(selected)}><Navigation size={18}/> Дойти сюда <span>· {selected.time}</span></button></> : <><div className="sheet-handle"/><p className="eyebrow">ИНТЕРАКТИВНАЯ КАРТА</p><h3>Выберите точку на карте</h3><p className="place-description">Мы подскажем, что рядом и как удобнее пройти.</p></>}</section>
+      <YandexDetailMap userCoordinates={userCoordinates} places={places} onPlaceSelect={setSelected}/>
+      <div className="map-tools"><button title="Моё местоположение" onClick={requestLocation}><Crosshair size={19}/></button><button onClick={() => setDark(v => !v)}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button></div>
+      <MapSheet selected={selected} saved={selected ? saved.includes(selected.id) : false} onClose={() => setSelected(null)} onSave={() => selected && toggleSaved(selected.id)} onNavigate={() => selected && navigate(selected)} />
     </>}
 
     {tab === 'saved' && <><section className="saved-hero"><Bookmark size={25}/><p className="eyebrow">ВАША КОЛЛЕКЦИЯ</p><h2>Сохранённые <em>места</em></h2></section><section className="place-list">{saved.length ? places.filter(p => saved.includes(p.id)).map(p => <PlaceRow key={p.id} p={p} saved onSave={() => toggleSaved(p.id)} onOpen={() => {setSelected(p); setTab('map')}}/>) : <div className="empty"><Heart size={27}/><b>Здесь появятся ваши места</b><p>Сохраняйте точки, чтобы вернуться к ним в следующий раз.</p></div>}</section></>}
@@ -155,6 +156,24 @@ export default function App() {
 }
 
 function PlaceRow({ p, saved, onSave, onOpen }: {p: Place; saved: boolean; onSave: () => void; onOpen: () => void}) { return <article className="place-row"><button className="place-photo" onClick={onOpen}>{p.icon}</button><button className="place-data" onClick={onOpen}><p className="eyebrow">{p.kind}</p><h4>{p.name}</h4><small><Clock3 size={13}/> {p.time} пешком</small></button><button className={`heart ${saved ? 'filled' : ''}`} onClick={onSave}><Heart size={19} fill={saved ? 'currentColor' : 'none'}/></button></article> }
+
+function MapSheet({ selected, saved, onClose, onSave, onNavigate }: { selected: Place | null; saved: boolean; onClose: () => void; onSave: () => void; onNavigate: () => void }) {
+  const [expanded, setExpanded] = useState(false)
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const touchStart = useRef<number | null>(null)
+  useEffect(() => { setExpanded(false); setViewerIndex(null) }, [selected?.id])
+  if (!selected) return null
+  const onTouchStart = (event: ReactTouchEvent<HTMLElement>) => { touchStart.current = event.touches[0]?.clientY ?? null }
+  const onTouchEnd = (event: ReactTouchEvent<HTMLElement>) => { const start = touchStart.current; const end = event.changedTouches[0]?.clientY; touchStart.current = null; if (start === null || end === undefined) return; const distance = end - start; if (distance > 70) onClose(); if (distance < -50) setExpanded(true) }
+  return <><section className={`map-sheet glass ${expanded ? 'expanded' : ''}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}><button className="sheet-handle" aria-label="Потяните карточку"/><div className="sheet-head"><div className="place-icon">{selected.icon}</div><div><p className="eyebrow">{selected.kind}</p><h3>{selected.name}</h3><p className="walk-time"><Clock3 size={14}/> Пешком {selected.time}</p></div><button onClick={onSave} className="save"><Heart size={20} fill={saved ? 'currentColor' : 'none'}/></button><button onClick={onClose} className="sheet-close" aria-label="Закрыть"><X size={18}/></button></div>{selected.images?.length ? <div className="place-gallery">{selected.images.map((image, index) => <button key={image} onClick={() => setViewerIndex(index)}><img src={image} alt={`${selected.name}, фото ${index + 1}`}/></button>)}</div> : null}<p className="place-description">{selected.description}</p><button className="navigate" onClick={onNavigate}><Navigation size={18}/> Проложить маршрут</button></section>{viewerIndex !== null && selected.images ? <PhotoViewer images={selected.images} title={selected.name} initialIndex={viewerIndex} onClose={() => setViewerIndex(null)} /> : null}</>
+}
+
+function PhotoViewer({ images, title, initialIndex, onClose }: { images: string[]; title: string; initialIndex: number; onClose: () => void }) {
+  const [index, setIndex] = useState(initialIndex)
+  const touchStart = useRef<number | null>(null)
+  const move = (direction: number) => setIndex(current => (current + direction + images.length) % images.length)
+  return <div className="photo-viewer" role="dialog" aria-modal="true" onTouchStart={event => { touchStart.current = event.touches[0]?.clientX ?? null }} onTouchEnd={event => { const start = touchStart.current; const end = event.changedTouches[0]?.clientX; touchStart.current = null; if (start === null || end === undefined || Math.abs(end - start) < 45) return; move(end < start ? 1 : -1) }}><button className="viewer-close" onClick={onClose} aria-label="Закрыть"><X size={23}/></button><img src={images[index]} alt={`${title}, фото ${index + 1}`}/>{images.length > 1 && <><button className="viewer-arrow left" onClick={() => move(-1)} aria-label="Предыдущее фото">‹</button><button className="viewer-arrow right" onClick={() => move(1)} aria-label="Следующее фото">›</button><div className="viewer-count">{index + 1} / {images.length}</div></>}</div>
+}
 
 function YandexDetailMap({ userCoordinates, places, onPlaceSelect }: { userCoordinates: Coordinates | null; places: Place[]; onPlaceSelect: (place: Place) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
