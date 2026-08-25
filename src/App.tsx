@@ -57,8 +57,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!supabase) return
-    void supabase
+    const client = supabase
+    if (!client) return
+    void client
       .from('places')
       .select('id,title,description,category_id,latitude,longitude,place_categories(title,icon),place_media(storage_path,sort_order)')
       .eq('status', 'published')
@@ -76,7 +77,7 @@ export default function App() {
           icon: place.place_categories?.icon ?? '●',
           description: place.description,
           coordinates: [place.longitude, place.latitude],
-          images: (place.place_media ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order).map((media: any) => supabase.storage.from('place-media').getPublicUrl(media.storage_path).data.publicUrl),
+          images: (place.place_media ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order).map((media: any) => client.storage.from('place-media').getPublicUrl(media.storage_path).data.publicUrl),
         }))
         setPlaces(livePlaces)
       })
